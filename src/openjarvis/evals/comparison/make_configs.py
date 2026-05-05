@@ -40,6 +40,20 @@ MODELS: Dict[str, Dict[str, object]] = {
         "num_gpus": 1,
         "max_tokens": 8192,
     },
+    "qwen-27b": {
+        "model_id": "Qwen/Qwen3.6-27B",
+        "model_pretty": "Qwen3.6-27B",
+        "engine": "vllm",
+        "num_gpus": 1,
+        "max_tokens": 8192,
+    },
+    "gemma-31b": {
+        "model_id": "google/gemma-4-31B-it",
+        "model_pretty": "Gemma 4 31B IT",
+        "engine": "vllm",
+        "num_gpus": 1,
+        "max_tokens": 8192,
+    },
     "qwen-122b": {
         "model_id": "Qwen/Qwen3.5-122B",
         "model_pretty": "Qwen3.5-122B",
@@ -173,7 +187,10 @@ def materialize_config(
 @click.option(
     "--all-tier1",
     is_flag=True,
-    help="Materialize the full configs grid (4 frameworks x 8 benchmarks x 3 models)",
+    help=(
+        "Materialize the full configs grid "
+        "(4 frameworks x 8 benchmarks x all catalog models)"
+    ),
 )
 def main(
     framework: Optional[str],
@@ -184,10 +201,9 @@ def main(
 ) -> None:
     """Generate eval config TOMLs for the framework-comparison experiment."""
     if all_tier1:
-        tier1_models = ["claude-opus-46", "qwen-9b", "qwen-122b"]
         count = 0
         for f in FRAMEWORKS:
-            for m in tier1_models:
+            for m in MODELS:
                 for b in BENCHMARKS:
                     p = materialize_config(f, m, b, output_dir)
                     click.echo(f"  wrote {p.name}")

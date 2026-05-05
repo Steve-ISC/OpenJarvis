@@ -6,11 +6,13 @@ from pathlib import Path
 
 import pytest
 import tomllib
+from click.testing import CliRunner
 
 from openjarvis.evals.comparison.make_configs import (
     BENCHMARKS,  # noqa: F401  (verify export)
     FRAMEWORKS,  # noqa: F401  (verify export)
     MODELS,
+    main,
     materialize_config,
 )
 
@@ -38,6 +40,30 @@ class TestMaterializeConfig:
             output_dir=tmp_path,
         )
         assert out.name == "gaia-hermes-qwen-9b.toml"
+
+    def test_mid_size_models_available(self, tmp_path: Path) -> None:
+        qwen = materialize_config(
+            framework="openjarvis",
+            model="qwen-27b",
+            benchmark="gaia",
+            output_dir=tmp_path,
+        )
+        gemma = materialize_config(
+            framework="openjarvis",
+            model="gemma-31b",
+            benchmark="gaia",
+            output_dir=tmp_path,
+        )
+
+        with open(qwen, "rb") as fh:
+            qwen_data = tomllib.load(fh)
+        with open(gemma, "rb") as fh:
+            gemma_data = tomllib.load(fh)
+
+        assert qwen.name == "gaia-openjarvis-qwen-27b.toml"
+        assert qwen_data["models"][0]["name"] == "Qwen/Qwen3.6-27B"
+        assert gemma.name == "gaia-openjarvis-gemma-31b.toml"
+        assert gemma_data["models"][0]["name"] == "google/gemma-4-31B-it"
 
     def test_unknown_framework_rejected(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="unknown framework"):
@@ -95,3 +121,18 @@ class TestTemplateStripping:
         assert first_non_blank.startswith("[meta]"), (
             f"Expected first line to be [meta], got: {first_non_blank!r}"
         )
+
+
+class TestCli:
+    def test_all_tier1_emits_expanded_model_grid(self, tmp_path: Path) -> None:
+        result = CliRunner().invoke(
+            main,
+            ["--all-tier1", "--output-dir", str(tmp_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert len(list(tmp_path.glob("*.toml"))) == (
+            len(FRAMEWORKS) * len(MODELS) * len(BENCHMARKS)
+        )
+        assert (tmp_path / "gaia-openjarvis-qwen-27b.toml").exists()
+        assert (tmp_path / "gaia-openjarvis-gemma-31b.toml").exists()
