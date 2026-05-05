@@ -118,15 +118,14 @@ speech-deepgram = ["deepgram-sdk>=3.0"]
 eval-wandb = ["wandb>=0.17"]
 eval-sheets = ["gspread>=6.0", "google-auth>=2.0"]
 mining-pearl-cpu = [
-    # Pearl's pure-Rust miner exposed to Python. Today: install from a local
-    # path or git URL via the build-from-pin path in src/openjarvis/mining/_install.py.
-    # When Pearl publishes to PyPI, this becomes a normal version pin.
-    "py-pearl-mining ; sys_platform == 'darwin' or sys_platform == 'linux'",
-    # PyTorch reference of NoisyGEMM — used for parity validation only,
-    # not required at runtime, but the install verifies torch builds OK.
-    "miner-base ; sys_platform == 'darwin' or sys_platform == 'linux'",
-    # JSON-RPC server that talks to pearld and brokers shares for the miner.
-    "pearl-gateway ; sys_platform == 'darwin' or sys_platform == 'linux'",
+    # Pearl Python packages (py-pearl-mining, miner-base, pearl-gateway) are
+    # not on PyPI yet. They are installed at first `mine init` via the
+    # build-from-pin path in src/openjarvis/mining/_install.py:build_from_pin().
+    # When Pearl publishes wheels, replace the line below with version pins.
+    #
+    # The extra remains as a feature-flag namespace so users can run
+    # `uv sync --extra mining-pearl-cpu` to opt-in (it succeeds with no
+    # additional resolution today; the actual install happens on demand).
 ]
 docs = [
     "mkdocs>=1.6",

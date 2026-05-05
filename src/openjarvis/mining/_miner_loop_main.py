@@ -112,8 +112,9 @@ async def _mine_one_round(
     header_bytes, target = _decode_mining_info(info_response["result"])
 
     # 2. Reconstruct the IncompleteBlockHeader and run pearl_mining.mine().
-    #    Pearl exposes a from_bytes constructor on IncompleteBlockHeader; if the
-    #    actual API name differs, fix here on first integration test.
+    # Verified APIs (py-pearl-mining 0.1.0 on macOS arm64):
+    #   - IncompleteBlockHeader.from_bytes(bytes) -> IncompleteBlockHeader
+    #   - PlainProof.to_base64() -> str  (used by _encode_plain_proof above)
     header = pearl_mining_module.IncompleteBlockHeader.from_bytes(header_bytes)
     mining_config = _build_mining_config(pearl_mining_module, k=k, rank=rank)
     plain_proof = pearl_mining_module.mine(
