@@ -2469,6 +2469,28 @@ const MESSAGING_CHANNELS: MessagingChannelConfig[] = [
     activeLabel: () => 'Connected to Slack',
     howToUse: () => 'Open Slack and DM @OpenJarvis to talk to your agent.',
   },
+  {
+    type: 'telegram',
+    name: 'Telegram',
+    icon: '✈',
+    description: 'Chat with your agent via Telegram bot',
+    setupSteps: [
+      '1. Open Telegram and search for @BotFather',
+      '2. Send /newbot and follow the instructions to create a bot',
+      '3. Copy the bot token (looks like 123456:ABC-DEF...)',
+      '4. Open a chat with your new bot and send /start',
+      '5. Paste the bot token and your Telegram chat ID below',
+    ],
+    fields: [
+      { key: 'bot_token', label: 'Bot Token', placeholder: '123456:ABC-DEF1234...', type: 'password' as const, required: true },
+      { key: 'chat_id', label: 'Chat ID', placeholder: 'Your numeric chat ID', type: 'text' as const, required: true },
+    ],
+    activeLabel: (cfg: Record<string, unknown>) => {
+      const chatId = cfg.chat_id || cfg.allowed_chat_ids || '';
+      return chatId ? `Connected (Chat ${chatId})` : 'Connected to Telegram';
+    },
+    howToUse: () => 'Open Telegram and send a message to your bot. The agent will respond automatically.',
+  },
 ];
 
 // ---------------------------------------------------------------------------

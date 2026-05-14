@@ -1638,6 +1638,40 @@ def create_agent_manager_router(
                 except Exception as exc:
                     logger.warning("Failed to init SendBlue channel: %s", exc)
 
+        # Initialize Telegram channel if binding telegram
+        if req.channel_type == "telegram":
+            config = req.config or {}
+            bot_token = config.get("bot_token", "")
+            chat_id = config.get("chat_id", "")
+            if bot_token:
+                try:
+                    bridge = getattr(request.app.state, "channel_bridge", None)
+                    # Check if TelegramChannel already running
+                    tg_channel = None
+                    if bridge and hasattr(bridge, "_channels"):
+                        tg_channel = bridge._channels.get("telegram")
+                    if tg_channel is None:
+                        from openjarvis.channels.telegram import TelegramChannel
+                        tg_channel = TelegramChannel(
+                            bot_token=bot_token,
+                            allowed_chat_ids=chat_id,
+                        )
+                        tg_channel.connect()
+                        if bridge and hasattr(bridge, "_channels"):
+                            bridge._channels["telegram"] = tg_channel
+                        logger.info("Telegram channel started for agent %s", agent_id)
+                    else:
+                        # Update allowed_chat_ids on existing channel
+                        if chat_id:
+                            existing = set(
+                                c.strip() for c in (tg_channel._allowed_chat_ids or "").split(",") if c.strip()
+                            )
+                            existing.add(chat_id.strip())
+                            tg_channel._allowed_chat_ids = ",".join(existing)
+                            logger.info("Added chat %s to Telegram allow-list", chat_id)
+                except Exception as exc:
+                    logger.warning("Failed to init Telegram channel: %s", exc)
+
         # Start Slack via slack-bolt Socket Mode
         if req.channel_type == "slack":
             config = req.config or {}
