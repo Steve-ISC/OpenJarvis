@@ -130,16 +130,21 @@ class TelegramChannel(BaseChannel):
 
                 resp = httpx.post(url, json=payload, timeout=10.0)
                 if resp.status_code >= 300:
-                    logger.warning(
-                        "Telegram API returned status %d: %s",
-                        resp.status_code,
-                        resp.text,
-                    )
-                    return False
+                    # Retry without parse_mode (Markdown errors are common)
+                    logger.info("Telegram send failed with parse_mode, retrying as plain text")
+                    payload.pop("parse_mode", None)
+                    resp = httpx.post(url, json=payload, timeout=10.0)
+                    if resp.status_code >= 300:
+                        logger.warning(
+                            "Telegram API returned status %d: %s",
+                            resp.status_code,
+                            resp.text,
+                        )
+                        return False
             self._publish_sent(channel, content, conversation_id)
             return True
         except Exception:
-            logger.debug("Telegram send failed", exc_info=True)
+            logger.error("Telegram send failed", exc_info=True)
             return False
 
     def status(self) -> ChannelStatus:
@@ -167,6 +172,7 @@ class TelegramChannel(BaseChannel):
                 msg = update.message
                 if msg is None:
                     return
+                logger.info("Telegram message from chat %s: %s", msg.chat.id, (msg.text or "")[:50])
                 cm = ChannelMessage(
                     channel="telegram",
                     sender=str(msg.from_user.id) if msg.from_user else "",
@@ -189,6 +195,7 @@ class TelegramChannel(BaseChannel):
                         return
                 # Run sync handlers in executor to avoid blocking async loop
                 loop = asyncio.get_event_loop()
+                logger.info("Dispatching to %d handler(s)", len(self._handlers))
                 for handler in self._handlers:
                     try:
                         await loop.run_in_executor(None, handler, cm)
@@ -208,7 +215,7 @@ class TelegramChannel(BaseChannel):
             app.add_handler(MessageHandler(filters.TEXT, _handle_msg))
             app.run_polling(stop_signals=None, drop_pending_updates=True)
         except Exception:
-            logger.debug("Telegram poll loop error", exc_info=True)
+            logger.error("Telegram poll loop error", exc_info=True)
             self._status = ChannelStatus.ERROR
 
     def _publish_sent(self, channel: str, content: str, conversation_id: str) -> None:
