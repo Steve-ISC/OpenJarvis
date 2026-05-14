@@ -180,6 +180,58 @@ def _get_resolver(source: str, url: str = ""):
     raise click.BadParameter(f"Unknown source: {source!r}")
 
 
+
+def _security_review(resolved_skill, source: str, console) -> bool:
+    """Run a pre-install security review. Returns True if safe to proceed."""
+    from openjarvis.skills.loader import load_skill_directory
+    from openjarvis.skills.security import (
+        TrustTier,
+        classify_trust_tier,
+        has_dangerous_capabilities,
+    )
+
+    manifest = load_skill_directory(resolved_skill.path)
+    if manifest is None:
+        console.print("[yellow]  Security: Could not parse manifest[/yellow]")
+        return True
+
+    is_bundled = False
+    in_index = source in ("hermes", "openclaw")
+    tier = classify_trust_tier(
+        is_bundled=is_bundled,
+        in_index=in_index,
+        has_signature=in_index or bool(manifest.signature),
+    )
+
+    dangerous = has_dangerous_capabilities(manifest)
+
+    tier_colors = {
+        TrustTier.BUNDLED: "green",
+        TrustTier.INDEXED: "cyan",
+        TrustTier.WORKSPACE: "yellow",
+        TrustTier.UNREVIEWED: "red",
+    }
+    color = tier_colors.get(tier, "white")
+    console.print(f"  [{color}]Trust Tier: {tier.value}[/{color}]")
+
+    if manifest.required_capabilities:
+        console.print(f"  Capabilities: {', '.join(manifest.required_capabilities)}")
+
+    if dangerous:
+        console.print(f"  [red bold]DANGEROUS: {', '.join(dangerous)}[/red bold]")
+        if tier == TrustTier.UNREVIEWED:
+            console.print("[red bold]  BLOCKED: Unreviewed skill with dangerous capabilities![/red bold]")
+            console.print("[dim]  Use --force to override this check.[/dim]")
+            return False
+        else:
+            console.print("[yellow]  WARNING: Skill has dangerous capabilities. Review before using.[/yellow]")
+
+    if not dangerous:
+        console.print("  [green]Security: SAFE[/green]")
+
+    return True
+
+
 @skill.command("install")
 @click.argument("query")
 @click.option(
@@ -224,6 +276,12 @@ def install(query: str, with_scripts: bool, force: bool, url: str):
     if not matches:
         console.print(f"[red]No skill named '{name}' found in source '{source}'[/red]")
         raise SystemExit(1)
+
+    # Pre-install security review
+    if not force:
+        console.print(f'[cyan]Security review for {matches[0].name}...[/cyan]')
+        if not _security_review(matches[0], source, console):
+            raise SystemExit(1)
 
     from openjarvis.skills.importer import SkillImporter
     from openjarvis.skills.parser import SkillParser

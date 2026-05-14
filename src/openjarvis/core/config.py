@@ -1516,6 +1516,32 @@ def _apply_toml_section(target: Any, section: Dict[str, Any]) -> None:
                             is_str_field = True
                     if is_str_field:
                         value = ",".join(str(v) for v in value)
+                    elif (
+                        value
+                        and isinstance(value[0], dict)
+                        and hasattr(target, "__dataclass_fields__")
+                    ):
+                        # Try to instantiate List[Dataclass] from List[dict]
+                        field_obj = target.__dataclass_fields__.get(key)
+                        if field_obj is not None:
+                            import typing
+                            ft = field_obj.type
+                            # Resolve string annotations
+                            if isinstance(ft, str):
+                                import types
+                                ns = {k: v for k, v in vars(type(target)).items()}
+                                ns.update(globals())
+                                try:
+                                    ft = eval(ft, ns)
+                                except Exception:
+                                    ft = None
+                            if ft is not None:
+                                origin = getattr(ft, "__origin__", None)
+                                if origin is list or origin is List:
+                                    args = getattr(ft, "__args__", ())
+                                    if args and hasattr(args[0], "__dataclass_fields__"):
+                                        dc_cls = args[0]
+                                        value = [dc_cls(**item) for item in value]
                 setattr(target, key, value)
 
 
@@ -1645,6 +1671,7 @@ def load_config(path: Optional[Path] = None) -> JarvisConfig:
             "optimize",
             "agent_manager",
             "digest",
+            "skills",
         )
         for section_name in top_sections:
             if section_name in data:
