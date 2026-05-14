@@ -405,40 +405,182 @@ async def telemetry_energy(request: Request):
 
 # ---- Skills routes ----
 
+
+def _get_skill_resolver(source: str, url: str = ""):
+    """Return a resolver instance for the given source name."""
+    if source == "hermes":
+        from openjarvis.skills.sources.hermes import HermesResolver
+        return HermesResolver()
+    if source == "openclaw":
+        from openjarvis.skills.sources.openclaw import OpenClawResolver
+        return OpenClawResolver()
+    if source == "github":
+        from pathlib import Path as _Path
+        from openjarvis.skills.sources.github import GitHubResolver
+        cache = _Path("~/.openjarvis/skill-cache/github/" + url.rstrip("/").rsplit("/", 1)[-1]).expanduser()
+        return GitHubResolver(cache_root=cache, repo_url=url)
+    raise ValueError(f"Unknown source: {source}")
+
+
 skills_router = APIRouter(prefix="/v1/skills", tags=["skills"])
 
 
 @skills_router.get("")
 async def list_skills(request: Request):
-    """List installed skills."""
+    """List installed skills from disk and registry."""
     try:
-        from openjarvis.core.registry import SkillRegistry
+        from pathlib import Path as _Path
+
+        from openjarvis.core.events import EventBus
+        from openjarvis.skills.manager import SkillManager
+        from openjarvis.skills.security import (
+            TrustTier,
+            classify_trust_tier,
+            has_dangerous_capabilities,
+        )
+
+        mgr = SkillManager(bus=EventBus())
+        skill_paths = []
+        user_dir = _Path("~/.openjarvis/skills/").expanduser()
+        if user_dir.exists():
+            skill_paths.append(user_dir)
+        workspace = _Path("./skills")
+        if workspace.exists():
+            skill_paths.append(workspace)
+        mgr.discover(paths=skill_paths)
 
         skills = []
-        for key in sorted(SkillRegistry.keys()):
-            skills.append({"name": key})
+        for name in sorted(mgr.skill_names()):
+            m = mgr.resolve(name)
+            dangerous = has_dangerous_capabilities(m)
+            skills.append({
+                "name": m.name,
+                "version": m.version,
+                "description": m.description or "",
+                "author": m.author or "",
+                "tags": m.tags or [],
+                "capabilities": m.required_capabilities or [],
+                "dangerous_capabilities": dangerous,
+                "steps": len(m.steps),
+            })
         return {"skills": skills}
     except Exception as exc:
         logger.warning("Failed to list skills: %s", exc)
         return {"skills": []}
 
 
-@skills_router.post("")
+@skills_router.get("/search")
+async def search_skills_api(request: Request):
+    """Search skills across configured sources."""
+    q = request.query_params.get("q", "")
+    if not q:
+        return {"results": []}
+    try:
+        from openjarvis.core.config import load_config
+
+        cfg = load_config()
+        results = []
+        for src_cfg in cfg.skills.sources:
+            source_name = src_cfg.source if hasattr(src_cfg, "source") else src_cfg.get("source", "")
+            url = src_cfg.url if hasattr(src_cfg, "url") else src_cfg.get("url", "")
+            try:
+                resolver = _get_skill_resolver(source_name, url)
+                resolver.sync()
+                for resolved in resolver.list_skills():
+                    haystack = " ".join([
+                        resolved.name or "",
+                        resolved.description or "",
+                        resolved.category or "",
+                    ]).lower()
+                    if q.lower() in haystack:
+                        results.append({
+                            "source": source_name,
+                            "name": resolved.name,
+                            "category": getattr(resolved, "category", "") or "",
+                            "description": (getattr(resolved, "description", "") or "")[:120],
+                        })
+            except Exception as exc:
+                logger.warning("Failed to search %s: %s", source_name, exc)
+        return {"results": results}
+    except Exception as exc:
+        logger.warning("Skill search failed: %s", exc)
+        return {"results": []}
+
+
+@skills_router.post("/install")
 async def install_skill(request: Request):
-    """Install a skill (placeholder)."""
-    return {
-        "status": "not_implemented",
-        "message": "Use TOML files in ~/.openjarvis/skills/",
-    }
+    """Install a skill from a configured source."""
+    try:
+        body = await request.json()
+        source = body.get("source", "")
+        name = body.get("name", "")
+        if not source or not name:
+            return {"success": False, "message": "source and name required"}
+
+        resolver = _get_skill_resolver(source)
+        resolver.sync()
+
+        # Find the skill
+        if "/" in name:
+            category, _, skill_name = name.partition("/")
+            matches = [s for s in resolver.list_skills() if s.name == skill_name and s.category == category]
+        else:
+            matches = [s for s in resolver.list_skills() if s.name == name]
+
+        if not matches:
+            return {"success": False, "message": f"Skill '{name}' not found in '{source}'"}
+
+        # Security check
+        from openjarvis.skills.loader import load_skill_directory
+        from openjarvis.skills.security import TrustTier, classify_trust_tier, has_dangerous_capabilities
+
+        manifest = load_skill_directory(matches[0].path)
+        if manifest:
+            in_index = source in ("hermes", "openclaw")
+            tier = classify_trust_tier(is_bundled=False, in_index=in_index, has_signature=in_index or bool(manifest.signature))
+            dangerous = has_dangerous_capabilities(manifest)
+            if dangerous and tier == TrustTier.UNREVIEWED:
+                return {
+                    "success": False,
+                    "message": f"BLOCKED: Unreviewed skill with dangerous capabilities: {', '.join(dangerous)}",
+                }
+
+        # Import
+        from openjarvis.skills.importer import SkillImporter
+        from openjarvis.skills.parser import SkillParser
+        from openjarvis.skills.tool_translator import ToolTranslator
+
+        importer = SkillImporter(parser=SkillParser(), tool_translator=ToolTranslator())
+        result = importer.import_skill(matches[0], with_scripts=False, force=False)
+
+        if result.success:
+            msg = "Already installed" if result.skipped else f"Installed to {result.target_path}"
+            return {"success": True, "message": msg}
+        else:
+            return {"success": False, "message": "; ".join(result.warnings or ["unknown error"])}
+    except Exception as exc:
+        logger.warning("Skill install failed: %s", exc)
+        return {"success": False, "message": str(exc)}
 
 
 @skills_router.delete("/{skill_name}")
 async def remove_skill(skill_name: str, request: Request):
-    """Remove a skill (placeholder)."""
-    return {
-        "status": "not_implemented",
-        "message": "Skill removal not yet supported via API",
-    }
+    """Remove an installed skill."""
+    try:
+        from pathlib import Path as _Path
+
+        from openjarvis.core.events import EventBus
+        from openjarvis.skills.manager import SkillManager
+
+        mgr = SkillManager(bus=EventBus())
+        roots = [_Path("~/.openjarvis/skills/").expanduser(), _Path("./skills")]
+        removed = mgr.remove(skill_name, roots=roots)
+        return {"success": True, "message": f"Removed {len(removed)} location(s)"}
+    except FileNotFoundError:
+        return {"success": False, "message": f"Skill '{skill_name}' not found"}
+    except Exception as exc:
+        logger.warning("Skill remove failed: %s", exc)
+        return {"success": False, "message": str(exc)}
 
 
 # ---- Sessions routes ----
