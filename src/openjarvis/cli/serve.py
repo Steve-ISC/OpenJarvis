@@ -503,4 +503,14 @@ def serve(
 
     import uvicorn
 
-    uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
+    # SSL support: use certs from ~/.openjarvis/ssl/ if present
+    import pathlib as _pathlib
+    _ssl_dir = _pathlib.Path.home() / ".openjarvis" / "ssl"
+    _ssl_cert = _ssl_dir / "cert.pem"
+    _ssl_key = _ssl_dir / "key.pem"
+    _ssl_kwargs = {}
+    if _ssl_cert.exists() and _ssl_key.exists():
+        _ssl_kwargs = {"ssl_certfile": str(_ssl_cert), "ssl_keyfile": str(_ssl_key)}
+        console.print(f"[green]  SSL:    enabled[/green]")
+
+    uvicorn.run(app, host=bind_host, port=bind_port, log_level="info", **_ssl_kwargs)

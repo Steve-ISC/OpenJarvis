@@ -274,7 +274,7 @@ const OPTIN_ANONID_KEY = 'openjarvis-desktop-anon-id';
 function getOrCreateAnonId(): string {
   const stored = localStorage.getItem(OPTIN_ANONID_KEY);
   if (stored) return stored;
-  const id = crypto.randomUUID();
+  const id = (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2)));
   localStorage.setItem(OPTIN_ANONID_KEY, id);
   return id;
 }

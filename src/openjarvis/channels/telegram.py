@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import textwrap
+import asyncio
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -162,7 +163,7 @@ class TelegramChannel(BaseChannel):
 
             app = ApplicationBuilder().token(self._token).build()
 
-            def _handle_msg(update, context):
+            async def _handle_msg(update, context):
                 msg = update.message
                 if msg is None:
                     return
@@ -186,9 +187,11 @@ class TelegramChannel(BaseChannel):
                             cm.conversation_id,
                         )
                         return
+                # Run sync handlers in executor to avoid blocking async loop
+                loop = asyncio.get_event_loop()
                 for handler in self._handlers:
                     try:
-                        handler(cm)
+                        await loop.run_in_executor(None, handler, cm)
                     except Exception:
                         logger.exception("Telegram handler error")
                 if self._bus is not None:

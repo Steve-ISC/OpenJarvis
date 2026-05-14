@@ -1,0 +1,16 @@
+[Unit]
+Description=OpenJarvis (Nico) AI Assistant
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/nuc-ai/docker/Jarvis-Nico
+ExecStart=/home/nuc-ai/docker/Jarvis-Nico/.venv/bin/jarvis serve --host 0.0.0.0 --port 8100
+Restart=on-failure
+RestartSec=5
+Environment=OLLAMA_HOST=http://localhost:11434
+Environment=TELEGRAM_BOT_TOKEN=8410863722:AAEGv8UTxgvcPyW44rbi9dUtUXTG1ncwsbI
+
+[Install]
+WantedBy=default.target

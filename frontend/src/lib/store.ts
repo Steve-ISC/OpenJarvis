@@ -243,7 +243,7 @@ export const useAppStore = create<AppState>((set, get) => {
     optInEnabled: localStorage.getItem(OPTIN_KEY) === 'true',
     optInDisplayName: localStorage.getItem(OPTIN_NAME_KEY) || '',
     optInEmail: localStorage.getItem(OPTIN_EMAIL_KEY) || '',
-    optInAnonId: localStorage.getItem(OPTIN_ANONID_KEY) || crypto.randomUUID(),
+    optInAnonId: localStorage.getItem(OPTIN_ANONID_KEY) || (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2))),
     optInModalSeen: localStorage.getItem(OPTIN_SEEN_KEY) === 'true',
     optInModalOpen: false,
 
