@@ -226,6 +226,9 @@ def create_connectors_router():
                     from pathlib import Path
 
                     instance._connected = Path(req.path).is_dir()
+                    # Persist path for filesystem connectors
+                    if instance._connected and hasattr(instance, "_save_path"):
+                        instance._save_path()
 
             elif auth_type == "oauth":
                 if req.code:

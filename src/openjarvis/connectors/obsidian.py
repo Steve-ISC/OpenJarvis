@@ -14,6 +14,8 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import quote
 
 from openjarvis.connectors._stubs import BaseConnector, Document, SyncStatus
+from openjarvis.connectors.oauth import delete_tokens, load_tokens, save_tokens
+from openjarvis.core.config import DEFAULT_CONFIG_DIR
 from openjarvis.core.registry import ConnectorRegistry
 from openjarvis.tools._stubs import ToolSpec
 
@@ -22,6 +24,8 @@ from openjarvis.tools._stubs import ToolSpec
 # ---------------------------------------------------------------------------
 
 _TEXT_EXTENSIONS = {".md", ".markdown", ".txt"}
+
+_DEFAULT_CREDENTIALS_PATH = str(DEFAULT_CONFIG_DIR / "connectors" / "obsidian.json")
 
 _SKIP_DIRS = {
     ".obsidian",
@@ -107,10 +111,21 @@ class ObsidianConnector(BaseConnector):
     auth_type = "filesystem"
 
     def __init__(self, vault_path: str = "") -> None:
+        self._credentials_path = _DEFAULT_CREDENTIALS_PATH
+        # Load persisted path if none provided
+        if not vault_path:
+            tokens = load_tokens(self._credentials_path)
+            if tokens:
+                vault_path = tokens.get("vault_path", "")
         self._vault_path = vault_path
         self._connected: bool = bool(vault_path) and Path(vault_path).is_dir()
         self._items_synced: int = 0
         self._items_total: int = 0
+
+    def _save_path(self) -> None:
+        """Persist vault_path to credentials file."""
+        if self._vault_path:
+            save_tokens(self._credentials_path, {"vault_path": self._vault_path})
 
     # ------------------------------------------------------------------
     # BaseConnector interface
@@ -124,6 +139,7 @@ class ObsidianConnector(BaseConnector):
         """Clear vault_path and mark as disconnected."""
         self._vault_path = ""
         self._connected = False
+        delete_tokens(self._credentials_path)
 
     def sync(
         self,
