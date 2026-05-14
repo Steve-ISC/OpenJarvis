@@ -107,6 +107,35 @@ export const SOURCE_CATALOG: ConnectorMeta[] = [
     ],
   },
   {
+    connector_id: 'strato_imap',
+    display_name: 'Strato Mail',
+    auth_type: 'oauth',
+    category: 'communication',
+    icon: 'Mail',
+    color: 'text-blue-400',
+    description: 'Strato email via IMAP',
+    unitLabel: 'emails',
+    steps: [
+      {
+        label: 'Gib deine Strato E-Mail-Adresse und dein E-Mail-Passwort ein. Der IMAP-Server (imap.strato.de) wird automatisch verwendet.',
+      },
+      {
+        label: 'Stelle sicher dass IMAP in deinem Strato Postfach aktiviert ist: Strato Kunden-Login \u2192 E-Mail \u2192 Postfach verwalten.',
+        url: 'https://www.strato.de/apps/CustomerService',
+        urlLabel: 'Strato Kunden-Login \u2192',
+      },
+    ],
+    troubleshooting: [
+      'IMAP muss im Strato Webmail aktiviert sein.',
+      'Nutze dein normales E-Mail-Passwort, kein App-Passwort noetig.',
+      'IMAP-Server: imap.strato.de, Port: 993, SSL: Ja',
+    ],
+    inputFields: [
+      { name: 'email', placeholder: 'du@deinedomain.de', type: 'text' },
+      { name: 'password', placeholder: 'E-Mail Passwort', type: 'password' },
+    ],
+  },
+  {
     connector_id: 'slack',
     display_name: 'Slack',
     auth_type: 'oauth',

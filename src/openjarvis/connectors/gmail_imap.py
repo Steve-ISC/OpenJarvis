@@ -245,3 +245,70 @@ class GmailIMAPConnector(BaseConnector):
                 category="communication",
             ),
         ]
+
+
+_STRATO_CREDENTIALS_PATH = str(DEFAULT_CONFIG_DIR / "connectors" / "strato_imap.json")
+
+
+@ConnectorRegistry.register("strato_imap")
+class StratoIMAPConnector(GmailIMAPConnector):
+    """Strato IMAP connector — same as Gmail IMAP but for Strato mail."""
+
+    connector_id = "strato_imap"
+    display_name = "Strato Mail (IMAP)"
+    _default_imap_host = "imap.strato.de"
+
+    def __init__(
+        self,
+        email_address: str = "",
+        app_password: str = "",
+        credentials_path: str = "",
+        *,
+        imap_host: str = "",
+        max_messages: int = 5000,
+    ) -> None:
+        super().__init__(
+            email_address=email_address,
+            app_password=app_password,
+            credentials_path=credentials_path or _STRATO_CREDENTIALS_PATH,
+            imap_host=imap_host or "imap.strato.de",
+            max_messages=max_messages,
+        )
+
+    def auth_url(self) -> str:
+        return "https://www.strato.de/apps/CustomerService"
+
+    def sync(self, *, since=None, cursor=None):
+        """Sync with Strato-specific doc_id prefix."""
+        for doc in super().sync(since=since, cursor=cursor):
+            # Replace gmail: prefix with strato:
+            doc.doc_id = doc.doc_id.replace("gmail:", "strato:", 1)
+            doc.source = "strato"
+            yield doc
+
+    def mcp_tools(self):
+        return [
+            ToolSpec(
+                name="strato_search_emails",
+                description="Search Strato email messages by keyword.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Search query"},
+                    },
+                    "required": ["query"],
+                },
+                category="communication",
+            ),
+            ToolSpec(
+                name="strato_list_unread",
+                description="List recent unread Strato emails.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "max_results": {"type": "integer", "description": "Max results", "default": 10},
+                    },
+                },
+                category="communication",
+            ),
+        ]
