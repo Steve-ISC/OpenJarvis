@@ -19,7 +19,9 @@ import { getBase, isTauri } from '../lib/api';
 import {
   Database, MessageSquare, Loader2, Brain, Search, FolderOpen, FileText,
   Mail, Hash, MessageCircle, CalendarDays, Contact, StickyNote, BookText,
-  Package, Upload, Link2, PhoneCall,
+  Package, Upload, Link2, PhoneCall, Shield, ShieldCheck, ShieldAlert,
+  Download, Trash2, RefreshCw, AlertTriangle, Zap, HardDrive, Globe,
+  ChevronDown, ChevronUp, Tag,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { SOURCE_CATALOG } from '../types/connectors';
@@ -1833,13 +1835,378 @@ function MemorySection() {
   );
 }
 
+
+// ---------------------------------------------------------------------------
+// Skills section (inline in Data Sources page)
+// ---------------------------------------------------------------------------
+
+interface InstalledSkill {
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  tags: string[];
+  capabilities: string[];
+  dangerous_capabilities: string[];
+  steps: number;
+}
+
+interface SkillSearchResult {
+  source: string;
+  name: string;
+  category: string;
+  description: string;
+}
+
+function SecurityBadge({ dangerous }: { dangerous: string[] }) {
+  if (dangerous.length === 0) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
+        style={{ background: 'var(--color-success, #22c55e)20', color: 'var(--color-success, #22c55e)' }}>
+        <ShieldCheck size={11} /> SAFE
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
+      style={{ background: 'var(--color-error, #ef4444)20', color: 'var(--color-error, #ef4444)' }}>
+      <ShieldAlert size={11} /> {dangerous.length} DANGEROUS
+    </span>
+  );
+}
+
+function CapabilityChip({ cap, dangerous }: { cap: string; dangerous: boolean }) {
+  const icons: Record<string, typeof Zap> = {
+    'shell:execute': Zap, 'filesystem:write': HardDrive, 'network:listen': Globe,
+  };
+  const Icon = icons[cap] || Tag;
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px]"
+      style={{
+        background: dangerous ? 'var(--color-error, #ef4444)15' : 'var(--color-bg-tertiary)',
+        color: dangerous ? 'var(--color-error, #ef4444)' : 'var(--color-text-secondary)',
+        border: dangerous ? '1px solid var(--color-error, #ef4444)30' : '1px solid var(--color-border)',
+      }}>
+      <Icon size={10} /> {cap}
+    </span>
+  );
+}
+
+function SkillCard({ skill, onRemove }: { skill: InstalledSkill; onRemove: (name: string) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  const handleRemove = async () => {
+    if (!confirm(`Skill "${skill.name}" wirklich entfernen?`)) return;
+    setRemoving(true);
+    try {
+      await fetch(`${getBase()}/v1/skills/${encodeURIComponent(skill.name)}`, { method: 'DELETE' });
+      onRemove(skill.name);
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl p-4 transition-all"
+      style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+            style={{ background: skill.dangerous_capabilities.length > 0 ? 'var(--color-error, #ef4444)15' : 'var(--color-accent)15' }}>
+            <Package size={20} style={{ color: skill.dangerous_capabilities.length > 0 ? 'var(--color-error, #ef4444)' : 'var(--color-accent)' }} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>{skill.name}</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded"
+                style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-tertiary)' }}>
+                v{skill.version}
+              </span>
+              <SecurityBadge dangerous={skill.dangerous_capabilities} />
+            </div>
+            <p className="text-xs mt-0.5 line-clamp-1" style={{ color: 'var(--color-text-secondary)' }}>
+              {skill.description || 'No description'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button onClick={() => setExpanded(!expanded)}
+            className="p-1.5 rounded-lg transition-colors cursor-pointer"
+            style={{ color: 'var(--color-text-tertiary)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          <button onClick={handleRemove} disabled={removing}
+            className="p-1.5 rounded-lg transition-colors cursor-pointer"
+            style={{ color: 'var(--color-text-tertiary)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-error, #ef4444)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-tertiary)')}>
+            {removing ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+          </button>
+        </div>
+      </div>
+      {expanded && (
+        <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+          {skill.author && <div className="text-xs mb-2" style={{ color: 'var(--color-text-secondary)' }}>Author: {skill.author}</div>}
+          {skill.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {skill.tags.map((t) => (
+                <span key={t} className="px-2 py-0.5 rounded-full text-[10px]"
+                  style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>{t}</span>
+              ))}
+            </div>
+          )}
+          {skill.capabilities.length > 0 && (
+            <div>
+              <div className="text-[10px] font-medium mb-1" style={{ color: 'var(--color-text-tertiary)' }}>CAPABILITIES</div>
+              <div className="flex flex-wrap gap-1">
+                {skill.capabilities.map((cap) => (
+                  <CapabilityChip key={cap} cap={cap} dangerous={skill.dangerous_capabilities.includes(cap)} />
+                ))}
+              </div>
+            </div>
+          )}
+          {skill.steps > 0 && (
+            <div className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)' }}>{skill.steps} step{skill.steps !== 1 ? 's' : ''} in pipeline</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SkillSearchResultCard({ result, installed, onInstall }: {
+  result: SkillSearchResult; installed: boolean; onInstall: (source: string, name: string) => Promise<void>;
+}) {
+  const [installing, setInstalling] = useState(false);
+  const handleInstall = async () => {
+    setInstalling(true);
+    try { await onInstall(result.source, result.name); } finally { setInstalling(false); }
+  };
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg px-4 py-3"
+      style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>{result.name}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded"
+            style={{ background: 'var(--color-accent)15', color: 'var(--color-accent)' }}>{result.source}</span>
+          {result.category && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded"
+              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-tertiary)' }}>{result.category}</span>
+          )}
+        </div>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>{result.description || 'No description'}</p>
+      </div>
+      <button onClick={handleInstall} disabled={installing || installed}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer shrink-0 transition-colors"
+        style={{
+          background: installed ? 'var(--color-bg-tertiary)' : 'var(--color-accent)',
+          color: installed ? 'var(--color-text-tertiary)' : 'var(--color-on-accent)',
+          opacity: installing ? 0.7 : 1,
+        }}>
+        {installing ? (<><Loader2 size={12} className="animate-spin" /> Installing...</>)
+          : installed ? (<><ShieldCheck size={12} /> Installed</>)
+          : (<><Download size={12} /> Install</>)}
+      </button>
+    </div>
+  );
+}
+
+function SkillsSection() {
+  const [skills, setSkills] = useState<InstalledSkill[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SkillSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchDone, setSearchDone] = useState(false);
+  const [skillsTab, setSkillsTab] = useState<'installed' | 'search'>('installed');
+  const [statusMsg, setStatusMsg] = useState('');
+
+  const loadSkills = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${getBase()}/v1/skills`);
+      if (res.ok) { const data = await res.json(); setSkills(data.skills || []); }
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadSkills(); }, [loadSkills]);
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setSearching(true); setSearchDone(false);
+    try {
+      const res = await fetch(`${getBase()}/v1/skills/search?q=${encodeURIComponent(searchQuery)}`);
+      if (res.ok) { const data = await res.json(); setSearchResults(data.results || []); }
+      setSearchDone(true); setSkillsTab('search');
+    } finally { setSearching(false); }
+  };
+
+  const handleInstall = async (source: string, name: string) => {
+    const res = await fetch(`${getBase()}/v1/skills/install`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, name }),
+    });
+    const data = await res.json();
+    if (data.success) { setStatusMsg(`${name} installed`); await loadSkills(); }
+    else { setStatusMsg(`Failed: ${data.message}`); }
+    setTimeout(() => setStatusMsg(''), 4000);
+  };
+
+  const handleRemove = (name: string) => {
+    setSkills((prev) => prev.filter((s) => s.name !== name));
+    setStatusMsg(`${name} removed`);
+    setTimeout(() => setStatusMsg(''), 3000);
+  };
+
+  const installedNames = new Set(skills.map((s) => s.name));
+  const safeCount = skills.filter((s) => s.dangerous_capabilities.length === 0).length;
+  const dangerousCount = skills.filter((s) => s.dangerous_capabilities.length > 0).length;
+
+  return (
+    <div>
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <div className="rounded-xl p-3 text-center"
+          style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+          <div className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>{skills.length}</div>
+          <div className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Installed</div>
+        </div>
+        <div className="rounded-xl p-3 text-center"
+          style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+          <div className="text-2xl font-bold" style={{ color: 'var(--color-success, #22c55e)' }}>{safeCount}</div>
+          <div className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Safe</div>
+        </div>
+        <div className="rounded-xl p-3 text-center"
+          style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+          <div className="text-2xl font-bold" style={{ color: dangerousCount > 0 ? 'var(--color-error, #ef4444)' : 'var(--color-text-tertiary)' }}>{dangerousCount}</div>
+          <div className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Dangerous</div>
+        </div>
+      </div>
+
+      {/* Search bar */}
+      <div className="flex gap-2 mb-4">
+        <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg"
+          style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+          <Search size={14} style={{ color: 'var(--color-text-tertiary)' }} />
+          <input type="text" placeholder="Search skills across Hermes, OpenClaw..."
+            value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            className="flex-1 bg-transparent outline-none text-sm" style={{ color: 'var(--color-text)' }} />
+        </div>
+        <button onClick={handleSearch} disabled={searching || !searchQuery.trim()}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors"
+          style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)', opacity: searching || !searchQuery.trim() ? 0.6 : 1 }}>
+          {searching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Search
+        </button>
+        <button onClick={loadSkills} disabled={loading}
+          className="p-2 rounded-lg transition-colors cursor-pointer"
+          style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-secondary)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {/* Status */}
+      {statusMsg && (
+        <div className="mb-4 px-4 py-2 rounded-lg text-sm"
+          style={{
+            background: statusMsg.startsWith('Failed') ? 'var(--color-error, #ef4444)15' : 'var(--color-success, #22c55e)15',
+            color: statusMsg.startsWith('Failed') ? 'var(--color-error, #ef4444)' : 'var(--color-success, #22c55e)',
+            border: `1px solid ${statusMsg.startsWith('Failed') ? 'var(--color-error, #ef4444)30' : 'var(--color-success, #22c55e)30'}`,
+          }}>{statusMsg}</div>
+      )}
+
+      {/* Sub-tabs */}
+      <div className="flex gap-1 mb-4 p-1 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
+        <button onClick={() => setSkillsTab('installed')}
+          className="flex-1 px-3 py-1.5 rounded-md text-sm font-medium cursor-pointer transition-colors"
+          style={{
+            background: skillsTab === 'installed' ? 'var(--color-bg)' : 'transparent',
+            color: skillsTab === 'installed' ? 'var(--color-text)' : 'var(--color-text-tertiary)',
+            boxShadow: skillsTab === 'installed' ? '0 1px 2px rgba(0,0,0,.1)' : 'none',
+          }}>
+          Installed ({skills.length})
+        </button>
+        <button onClick={() => setSkillsTab('search')}
+          className="flex-1 px-3 py-1.5 rounded-md text-sm font-medium cursor-pointer transition-colors"
+          style={{
+            background: skillsTab === 'search' ? 'var(--color-bg)' : 'transparent',
+            color: skillsTab === 'search' ? 'var(--color-text)' : 'var(--color-text-tertiary)',
+            boxShadow: skillsTab === 'search' ? '0 1px 2px rgba(0,0,0,.1)' : 'none',
+          }}>
+          Search Results {searchResults.length > 0 && `(${searchResults.length})`}
+        </button>
+      </div>
+
+      {/* Content */}
+      {skillsTab === 'installed' && (
+        <div className="flex flex-col gap-3">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 size={24} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
+            </div>
+          ) : skills.length === 0 ? (
+            <div className="text-center py-12">
+              <Package size={40} className="mx-auto mb-3" style={{ color: 'var(--color-text-tertiary)' }} />
+              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                No skills installed yet. Search to find and install skills.
+              </p>
+            </div>
+          ) : skills.map((skill) => (
+            <SkillCard key={skill.name} skill={skill} onRemove={handleRemove} />
+          ))}
+        </div>
+      )}
+
+      {skillsTab === 'search' && (
+        <div className="flex flex-col gap-2">
+          {!searchDone ? (
+            <div className="text-center py-12">
+              <Search size={40} className="mx-auto mb-3" style={{ color: 'var(--color-text-tertiary)' }} />
+              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Search for skills across configured sources.</p>
+            </div>
+          ) : searchResults.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>No results for &quot;{searchQuery}&quot;</p>
+            </div>
+          ) : searchResults.map((r) => (
+            <SkillSearchResultCard key={`${r.source}:${r.name}`} result={r}
+              installed={installedNames.has(r.name)} onInstall={handleInstall} />
+          ))}
+        </div>
+      )}
+
+      {/* Security warning */}
+      {dangerousCount > 0 && (
+        <div className="mt-6 rounded-xl p-4 flex items-start gap-3"
+          style={{ background: 'var(--color-error, #ef4444)08', border: '1px solid var(--color-error, #ef4444)20' }}>
+          <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: 'var(--color-error, #ef4444)' }} />
+          <div>
+            <div className="text-sm font-medium" style={{ color: 'var(--color-error, #ef4444)' }}>
+              {dangerousCount} skill{dangerousCount !== 1 ? 's' : ''} with dangerous capabilities
+            </div>
+            <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+              These skills have access to shell execution, filesystem writes, or network listeners. Review them carefully.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
 export function DataSourcesPage() {
   const [agents, setAgents] = useState<ManagedAgent[]>([]);
-  const [activeTab, setActiveTab] = useState<'sources' | 'messaging' | 'memory'>('sources');
+  const [activeTab, setActiveTab] = useState<'sources' | 'messaging' | 'skills' | 'memory'>('sources');
   const [creatingAgent, setCreatingAgent] = useState(false);
 
   const loadAgents = useCallback(() => {
@@ -1879,6 +2246,7 @@ export function DataSourcesPage() {
   const tabs = [
     { id: 'sources' as const, label: 'Data Sources', icon: Database },
     { id: 'messaging' as const, label: 'Messaging Channels', icon: MessageSquare },
+    { id: 'skills' as const, label: 'Skills', icon: Package },
     { id: 'memory' as const, label: 'Memory', icon: Brain },
   ];
 
@@ -1936,6 +2304,7 @@ export function DataSourcesPage() {
             </div>
           ) : null
         )}
+        {activeTab === 'skills' && <SkillsSection />}
         {activeTab === 'memory' && <MemorySection />}
       </div>
       </div>
